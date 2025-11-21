@@ -58,7 +58,17 @@ class Attention(nn.Module):
             k = self.rope(k, pos)
 
         if self.fused_attn:
-            x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop.p if self.training else 0.0)
+            # x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop.p if self.training else 0.0)
+            if hasattr(F, 'scaled_dot_product_attention'):
+                x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop.p if self.training else 0.0)
+            else:
+                # Manual scaled dot-product attention
+                scale = 1.0 / math.sqrt(q.size(-1))
+                attn = torch.matmul(q, k.transpose(-2, -1)) * scale
+                attn = attn.softmax(dim=-1)
+                if self.training and self.attn_drop.p > 0:
+                    attn = self.attn_drop(attn)
+                x = torch.matmul(attn, v)
         else:
             q = q * self.scale
             attn = q @ k.transpose(-2, -1)
